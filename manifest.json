@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "网页内容修改器",
+  "version": "1.0",
+  "description": "允许用户自定义修改网页上的特定内容",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "images/icon.jpg"
+  },
+  "icons": {
+    "128": "images/icon.jpg"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ]
+} 
