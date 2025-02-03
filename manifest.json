@@ -2,17 +2,23 @@
   "manifest_version": 3,
   "name": "网页内容修改器",
   "version": "1.0",
-  "description": "允许用户自定义修改网页上的特定内容",
+  "description": "一个强大的 Chrome 扩展，允许用户自定义修改网页内容",
   "permissions": [
-    "activeTab",
     "storage",
-    "scripting"
+    "tabs"
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_icon": "images/icon.jpg"
+    "default_icon": {
+      "16": "images/icon.jpg",
+      "48": "images/icon.jpg",
+      "128": "images/icon.jpg"
+    }
   },
+  "options_page": "options.html",
   "icons": {
+    "16": "images/icon.jpg",
+    "48": "images/icon.jpg",
     "128": "images/icon.jpg"
   },
   "content_scripts": [

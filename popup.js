@@ -1,7 +1,14 @@
 document.addEventListener('DOMContentLoaded', async () => {
   // 获取当前标签页的URL
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  document.getElementById('currentUrl').textContent = tab.url;
+  
+  // 检查是否是编辑模式
+  const urlParams = new URLSearchParams(window.location.search);
+  const editRuleId = urlParams.get('edit');
+  const editUrl = urlParams.get('url');
+  
+  // 设置当前URL（如果是编辑模式，使用原规则的URL）
+  document.getElementById('currentUrl').textContent = editUrl || tab.url;
 
   // 颜色选择器相关
   const colorInput = document.getElementById('textColor');
@@ -39,7 +46,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function getFormData() {
     const ruleId = document.getElementById('ruleForm').dataset.editingRuleId || Date.now().toString();
     return {
-      id: ruleId, // 使用现有ID或创建新ID
+      id: ruleId,
       name: document.getElementById('ruleName').value,
       selector: document.getElementById('selector').value,
       newContent: document.getElementById('newContent').value,
@@ -47,13 +54,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       modifyMode: document.getElementById('modifyMode').value,
       textColor: colorInput.value,
       enableColor: enableColor.checked,
-      url: tab.url
+      url: editUrl || tab.url,
+      disabled: false // 新规则默认启用
     };
   }
 
   // 清空表单
   function clearForm() {
-    document.getElementById('ruleForm').dataset.editingRuleId = ''; // 清除编辑状态
+    document.getElementById('ruleForm').dataset.editingRuleId = '';
     document.getElementById('ruleName').value = '';
     document.getElementById('selector').value = '';
     document.getElementById('newContent').value = '';
@@ -66,7 +74,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 加载规则到表单
   function loadRuleToForm(rule) {
-    document.getElementById('ruleForm').dataset.editingRuleId = rule.id; // 保存正在编辑的规则ID
+    document.getElementById('ruleForm').dataset.editingRuleId = rule.id;
     document.getElementById('ruleName').value = rule.name;
     document.getElementById('selector').value = rule.selector;
     document.getElementById('newContent').value = rule.newContent;
@@ -87,7 +95,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       ruleElement.className = 'rule-item';
       ruleElement.innerHTML = `
         <div class="rule-header">
-          <div class="rule-title">${rule.name || '未命名规则'}</div>
+          <div class="rule-title">
+            <span>${rule.name || '未命名规则'}</span>
+            <span class="status-badge ${rule.disabled ? 'status-inactive' : 'status-active'}">
+              ${rule.disabled ? '禁用' : '启用'}
+            </span>
+          </div>
           <div class="rule-actions">
             <button class="secondary edit-rule" data-rule-id="${rule.id}">编辑</button>
             <button class="delete delete-rule" data-rule-id="${rule.id}">删除</button>
@@ -143,7 +156,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function loadRulesList() {
     chrome.storage.sync.get('rules', (result) => {
       const rules = result.rules || [];
-      renderRulesList(rules);
+      const currentUrlRules = rules.filter(rule => rule.url === (editUrl || tab.url));
+      renderRulesList(currentUrlRules);
     });
   }
 
@@ -192,57 +206,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
-  // 加密密钥（建议使用更复杂的密钥生成方式）
-  const ENCRYPTION_KEY = 'modifier-rules-v1';
-
-  // 导出规则
-  async function exportRules() {
-    try {
-      log('info', '开始导出规则');
-      
-      chrome.storage.sync.get('rules', (result) => {
-        const rules = result.rules || [];
-        if (rules.length === 0) {
-          log('warning', '没有可导出的规则');
-          alert('没有可导出的规则！');
-          return;
-        }
-
-        // 准备导出数据（移除URL）
-        const exportData = rules.map(rule => {
-          const { url, ...ruleWithoutUrl } = rule;
-          return ruleWithoutUrl;
-        });
-
-        // 转换为JSON并加密
-        const jsonStr = JSON.stringify(exportData);
-        const encrypted = CryptoJS.AES.encrypt(jsonStr, ENCRYPTION_KEY).toString();
-        
-        log('info', '规则加密完成', {
-          rulesCount: rules.length,
-          dataSize: jsonStr.length,
-          encryptedSize: encrypted.length
-        });
-
-        // 创建并下载文件
-        const blob = new Blob([encrypted], { type: 'application/octet-stream' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `modifier-rules-${new Date().toISOString().slice(0,10)}.mrf`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-
-        log('success', '规则导出成功');
-      });
-    } catch (error) {
-      log('error', '规则导出失败', { error: error.message });
-      alert('导出失败：' + error.message);
-    }
-  }
-
   // 导入规则
   async function importRules(file) {
     try {
@@ -278,7 +241,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           // 添加当前URL到规则中
           const rulesWithUrl = importedRules.map(rule => ({
             ...rule,
-            url: tab.url
+            url: editUrl || tab.url
           }));
 
           // 获取现有规则
@@ -326,45 +289,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // 强制循环开关处理
-  const forceLoopCheckbox = document.getElementById('forceLoopEnabled');
-  
-  // 加载强制循环设置
-  chrome.storage.sync.get('forceLoopEnabled', (result) => {
-    forceLoopCheckbox.checked = result.forceLoopEnabled || false;
-    log('info', '加载强制循环设置', {
-      enabled: forceLoopCheckbox.checked
-    });
-  });
-
-  // 监听强制循环开关变化
-  forceLoopCheckbox.addEventListener('change', () => {
-    const enabled = forceLoopCheckbox.checked;
-    chrome.storage.sync.set({ forceLoopEnabled: enabled }, () => {
-      log('info', '更新强制循环设置', { enabled });
-      
-      // 通知当前标签页更新设置
-      chrome.tabs.sendMessage(tab.id, {
-        type: 'UPDATE_FORCE_LOOP',
-        enabled: enabled
-      });
-
-      // 通知所有其他标签页
-      chrome.tabs.query({}, (tabs) => {
-        tabs.forEach(t => {
-          if (t.id !== tab.id) {
-            chrome.tabs.sendMessage(t.id, {
-              type: 'UPDATE_FORCE_LOOP',
-              enabled: enabled
-            }).catch(() => {
-              // 忽略不支持的标签页错误
-            });
-          }
-        });
-      });
-    });
-  });
-
   // 日志函数
   function log(type, message, data = null) {
     const logMessage = {
@@ -376,9 +300,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('🔄 规则管理器 >', logMessage);
   }
 
-  // 绑定导入导出按钮事件
-  document.getElementById('exportButton').addEventListener('click', exportRules);
-  
+  // 绑定导入按钮事件
   document.getElementById('importButton').addEventListener('click', () => {
     document.getElementById('importInput').click();
   });
@@ -394,6 +316,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       e.target.value = ''; // 清空选择，允许重复选择同一文件
     }
   });
+
+  // 如果是编辑模式，加载规则
+  if (editRuleId) {
+    chrome.storage.sync.get('rules', (result) => {
+      const rules = result.rules || [];
+      const rule = rules.find(r => r.id === editRuleId);
+      if (rule) {
+        loadRuleToForm(rule);
+      }
+    });
+  }
 
   // 初始加载规则列表
   loadRulesList();

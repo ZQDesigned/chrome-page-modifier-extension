@@ -261,6 +261,15 @@ function handleRule(rule) {
     log('warning', '处理失败：规则无效', { rule });
     return;
   }
+
+  // 如果规则被禁用，直接返回
+  if (rule.disabled) {
+    log('info', '规则已禁用，跳过处理', {
+      ruleName: rule.name,
+      ruleId: rule.id
+    });
+    return;
+  }
   
   // 记录当前页面状态
   log('info', '开始查找元素 - 页面状态', {
